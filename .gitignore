@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+
+# Environment & Secrets
+.env
+.env.*
+!.env.example
+
+# Foydalanuvchi yuklagan fayllar
+server/uploads/
+
+# Android / Gradle
+android/.gradle/
+android/local.properties
+android/build/
+android/app/build/
+android/.idea/
+*.iml
+*.apk
+*.aab
+
+# Imzolash kalitlari va maxfiy fayllar – HECH QACHON commit qilmang
+*.jks
+*.keystore
+*.p12
+*.pem
+keystore.properties
+android/keystore.b64
+signing/
+
+# Expo / RN
+client/.expo/
+client/dist/
+client/web-build/
+
+# OS & Editor
+.DS_Store
+Thumbs.db
+.vscode/

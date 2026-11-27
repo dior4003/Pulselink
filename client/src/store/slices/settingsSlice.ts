@@ -2,16 +2,21 @@ import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { Platform } from 'react-native';
 import { IceServerConfig } from '../../models/types';
 
+export const PRODUCTION_SERVER_URL = 'https://phoneagent.uz';
+
 function defaultServerUrl(): string {
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
-    const origin = window.location.origin;
-    if (!origin.includes(':8081') && !origin.includes(':19006')) {
-      return origin;
+    const host = window.location.hostname;
+    if (host === 'localhost' || host === '127.0.0.1') {
+      const origin = window.location.origin;
+      if (!origin.includes(':8081') && !origin.includes(':19006')) {
+        return origin;
+      }
+      return 'http://localhost:3000';
     }
-    return 'http://localhost:3000';
+    return window.location.origin;
   }
-  if (Platform.OS === 'android') return 'http://10.0.2.2:3000';
-  return 'http://localhost:3000';
+  return PRODUCTION_SERVER_URL;
 }
 
 export interface ToastNotice {

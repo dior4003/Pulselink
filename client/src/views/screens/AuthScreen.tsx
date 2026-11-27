@@ -17,17 +17,23 @@ import { DARK_THEME, LIGHT_THEME } from '../theme/colors';
 
 export const AuthScreen: React.FC = () => {
   const { loading, error } = useSelector((s: RootState) => s.auth);
-  const { serverUrl, darkTheme, googleClientId } = useSelector((s: RootState) => s.settings);
+  const { darkTheme, googleClientId } = useSelector((s: RootState) => s.settings);
   const theme = darkTheme ? DARK_THEME : LIGHT_THEME;
 
-  const [isRegister, setIsRegister] = useState(false);
-  const [urlInput, setUrlInput] = useState(serverUrl);
+  const [mode, setMode] = useState<'login' | 'register' | 'reset'>('login');
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
   const [phone, setPhone] = useState('');
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
+
+  // Password reset state
+  const [resetIdentifier, setResetIdentifier] = useState('');
+  const [resetCode, setResetCode] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [resetStep, setResetStep] = useState<1 | 2>(1);
+  const [resetNotice, setResetNotice] = useState<string | null>(null);
 
   useEffect(() => {
     if (Platform.OS !== 'web' || !googleClientId || typeof document === 'undefined') return;
@@ -55,13 +61,37 @@ export const AuthScreen: React.FC = () => {
   }, [googleClientId]);
 
   const handleSubmit = async () => {
-    await ApiController.saveServerUrl(urlInput);
-    const ok = isRegister
-      ? await ApiController.register({ displayName, email, username, phone, password })
-      : await ApiController.login(identifier, password);
+    const ok =
+      mode === 'register'
+        ? await ApiController.register({ displayName, email, username, phone, password })
+        : await ApiController.login(identifier, password);
     if (ok) {
       SocketController.connect();
       ApiController.refreshLists().catch(() => {});
+    }
+  };
+
+  const handleSendResetCode = async () => {
+    try {
+      setResetNotice(null);
+      const res = await ApiController.forgotPassword(resetIdentifier);
+      setResetStep(2);
+      setResetNotice(res.devCode ? `${res.message} (Test kodi: ${res.devCode})` : res.message);
+    } catch (err: any) {
+      Alert.alert('Xatolik', err.message);
+    }
+  };
+
+  const handleConfirmReset = async () => {
+    try {
+      const res = await ApiController.resetPassword(resetIdentifier, resetCode, newPassword);
+      Alert.alert('Muvaffaqiyatli', res.message);
+      setMode('login');
+      setResetStep(1);
+      setResetCode('');
+      setNewPassword('');
+    } catch (err: any) {
+      Alert.alert('Xatolik', err.message);
     }
   };
 
@@ -78,7 +108,7 @@ export const AuthScreen: React.FC = () => {
         Alert.alert('Google OAuth', 'Google SDK yuklanmadi.');
       }
     } else {
-      Alert.alert('Google OAuth', 'iOS/Android buildda Google Sign-In uchun Expo Dev Client / native SHA-1 sozlang.');
+      Alert.alert('Google OAuth', 'Mobil ilovada Google Sign-In uchun GOOGLE_CLIENT_ID va SHA-1 sozlang.');
     }
   };
 
@@ -95,108 +125,156 @@ export const AuthScreen: React.FC = () => {
           <View>
             <Text style={[styles.title, { color: theme.text }]}>PulseLink</Text>
             <Text style={{ color: theme.textMuted, fontSize: 12 }}>
-              Web • iOS • Android (React Native + Redux)
+              Video, audio va tezkor chat
             </Text>
           </View>
         </View>
 
-        <Text style={[styles.label, { color: theme.textMuted }]}>Server manzili</Text>
-        <TextInput
-          value={urlInput}
-          onChangeText={setUrlInput}
-          style={[styles.input, { color: theme.text, backgroundColor: theme.bg, borderColor: theme.border }]}
-          autoCapitalize="none"
-        />
-
-        <View style={[styles.tabs, { backgroundColor: theme.bg }]}>
-          <TouchableOpacity
-            onPress={() => setIsRegister(false)}
-            style={[styles.tab, !isRegister && { backgroundColor: theme.primary }]}
-          >
-            <Text style={[styles.tabText, { color: !isRegister ? '#FFF' : theme.textMuted }]}>Kirish</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => setIsRegister(true)}
-            style={[styles.tab, isRegister && { backgroundColor: theme.primary }]}
-          >
-            <Text style={[styles.tabText, { color: isRegister ? '#FFF' : theme.textMuted }]}>Ro‘yxatdan o‘tish</Text>
-          </TouchableOpacity>
-        </View>
-
-        {isRegister ? (
+        {mode !== 'reset' ? (
           <>
+            <View style={[styles.tabs, { backgroundColor: theme.bg }]}>
+              <TouchableOpacity
+                onPress={() => setMode('login')}
+                style={[styles.tab, mode === 'login' && { backgroundColor: theme.primary }]}
+              >
+                <Text style={[styles.tabText, { color: mode === 'login' ? '#FFF' : theme.textMuted }]}>Kirish</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setMode('register')}
+                style={[styles.tab, mode === 'register' && { backgroundColor: theme.primary }]}
+              >
+                <Text style={[styles.tabText, { color: mode === 'register' ? '#FFF' : theme.textMuted }]}>Ro‘yxatdan o‘tish</Text>
+              </TouchableOpacity>
+            </View>
+
+            {mode === 'register' ? (
+              <>
+                <TextInput
+                  placeholder="Ism va familiya"
+                  placeholderTextColor={theme.textMuted}
+                  value={displayName}
+                  onChangeText={setDisplayName}
+                  style={[styles.input, { color: theme.text, backgroundColor: theme.bg, borderColor: theme.border }]}
+                />
+                <TextInput
+                  placeholder="Email (yoki pastga telefon kiriting)"
+                  placeholderTextColor={theme.textMuted}
+                  value={email}
+                  onChangeText={setEmail}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  style={[styles.input, { color: theme.text, backgroundColor: theme.bg, borderColor: theme.border }]}
+                />
+                <TextInput
+                  placeholder="Telefon raqami (+998901234567)"
+                  placeholderTextColor={theme.textMuted}
+                  value={phone}
+                  onChangeText={setPhone}
+                  keyboardType="phone-pad"
+                  style={[styles.input, { color: theme.text, backgroundColor: theme.bg, borderColor: theme.border }]}
+                />
+                <TextInput
+                  placeholder="Username (ixtiyoriy)"
+                  placeholderTextColor={theme.textMuted}
+                  value={username}
+                  onChangeText={setUsername}
+                  autoCapitalize="none"
+                  style={[styles.input, { color: theme.text, backgroundColor: theme.bg, borderColor: theme.border }]}
+                />
+              </>
+            ) : (
+              <TextInput
+                placeholder="Email, telefon raqami yoki username"
+                placeholderTextColor={theme.textMuted}
+                value={identifier}
+                onChangeText={setIdentifier}
+                autoCapitalize="none"
+                style={[styles.input, { color: theme.text, backgroundColor: theme.bg, borderColor: theme.border }]}
+              />
+            )}
+
             <TextInput
-              placeholder="Ism va familiya"
+              placeholder="Parol"
               placeholderTextColor={theme.textMuted}
-              value={displayName}
-              onChangeText={setDisplayName}
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
               style={[styles.input, { color: theme.text, backgroundColor: theme.bg, borderColor: theme.border }]}
             />
-            <TextInput
-              placeholder="Email manzili"
-              placeholderTextColor={theme.textMuted}
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-              style={[styles.input, { color: theme.text, backgroundColor: theme.bg, borderColor: theme.border }]}
-            />
-            <TextInput
-              placeholder="Username (ixtiyoriy)"
-              placeholderTextColor={theme.textMuted}
-              value={username}
-              onChangeText={setUsername}
-              autoCapitalize="none"
-              style={[styles.input, { color: theme.text, backgroundColor: theme.bg, borderColor: theme.border }]}
-            />
-            <TextInput
-              placeholder="Telefon (ixtiyoriy)"
-              placeholderTextColor={theme.textMuted}
-              value={phone}
-              onChangeText={setPhone}
-              keyboardType="phone-pad"
-              style={[styles.input, { color: theme.text, backgroundColor: theme.bg, borderColor: theme.border }]}
-            />
+
+            {mode === 'login' && (
+              <TouchableOpacity onPress={() => setMode('reset')} style={{ alignSelf: 'flex-end' }}>
+                <Text style={{ color: theme.secondary, fontSize: 12.5, fontWeight: '600' }}>
+                  Parolni unutdingizmi?
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            {error ? <Text style={[styles.error, { color: theme.danger }]}>{error}</Text> : null}
+
+            <TouchableOpacity
+              disabled={loading}
+              onPress={handleSubmit}
+              style={[styles.btnPrimary, { backgroundColor: theme.primary }]}
+            >
+              <Text style={styles.btnText}>
+                {loading ? 'Kutilmoqda...' : mode === 'register' ? 'Hisob yaratish' : 'Kirish'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              disabled={loading}
+              onPress={handleGooglePress}
+              style={[styles.btnOutline, { borderColor: theme.border }]}
+            >
+              <Text style={[styles.btnText, { color: theme.text }]}>Google orqali davom etish</Text>
+            </TouchableOpacity>
           </>
         ) : (
-          <TextInput
-            placeholder="Email yoki username"
-            placeholderTextColor={theme.textMuted}
-            value={identifier}
-            onChangeText={setIdentifier}
-            autoCapitalize="none"
-            style={[styles.input, { color: theme.text, backgroundColor: theme.bg, borderColor: theme.border }]}
-          />
+          <View style={{ gap: 12 }}>
+            <Text style={{ color: theme.text, fontWeight: '700', fontSize: 16 }}>Parolni tiklash</Text>
+            <TextInput
+              placeholder="Email, telefon raqami yoki username"
+              placeholderTextColor={theme.textMuted}
+              value={resetIdentifier}
+              onChangeText={setResetIdentifier}
+              autoCapitalize="none"
+              style={[styles.input, { color: theme.text, backgroundColor: theme.bg, borderColor: theme.border }]}
+            />
+            {resetStep === 2 && (
+              <>
+                <TextInput
+                  placeholder="6 xonali tasdiqlash kodi"
+                  placeholderTextColor={theme.textMuted}
+                  value={resetCode}
+                  onChangeText={setResetCode}
+                  keyboardType="number-pad"
+                  style={[styles.input, { color: theme.text, backgroundColor: theme.bg, borderColor: theme.border }]}
+                />
+                <TextInput
+                  placeholder="Yangi parol (kamida 4 ta belgi)"
+                  placeholderTextColor={theme.textMuted}
+                  value={newPassword}
+                  onChangeText={setNewPassword}
+                  secureTextEntry
+                  style={[styles.input, { color: theme.text, backgroundColor: theme.bg, borderColor: theme.border }]}
+                />
+              </>
+            )}
+            {resetNotice ? <Text style={{ color: theme.secondary, fontSize: 12.5 }}>{resetNotice}</Text> : null}
+            <TouchableOpacity
+              onPress={resetStep === 1 ? handleSendResetCode : handleConfirmReset}
+              style={[styles.btnPrimary, { backgroundColor: theme.primary }]}
+            >
+              <Text style={styles.btnText}>
+                {resetStep === 1 ? 'Tiklash kodini olish' : 'Parolni yangilash'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => { setMode('login'); setResetStep(1); }}>
+              <Text style={{ color: theme.textMuted, textAlign: 'center', fontWeight: '600' }}>← Kirishga qaytish</Text>
+            </TouchableOpacity>
+          </View>
         )}
-
-        <TextInput
-          placeholder="Parol"
-          placeholderTextColor={theme.textMuted}
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-          style={[styles.input, { color: theme.text, backgroundColor: theme.bg, borderColor: theme.border }]}
-        />
-
-        {error ? <Text style={[styles.error, { color: theme.danger }]}>{error}</Text> : null}
-
-        <TouchableOpacity
-          disabled={loading}
-          onPress={handleSubmit}
-          style={[styles.btnPrimary, { backgroundColor: theme.primary }]}
-        >
-          <Text style={styles.btnText}>
-            {loading ? 'Kutilmoqda...' : isRegister ? 'Email bilan hisob yaratish' : 'Email orqali kirish'}
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          disabled={loading}
-          onPress={handleGooglePress}
-          style={[styles.btnOutline, { borderColor: theme.border }]}
-        >
-          <Text style={[styles.btnText, { color: theme.text }]}>Google orqali davom etish</Text>
-        </TouchableOpacity>
       </View>
     </ScrollView>
   );
@@ -209,7 +287,6 @@ const styles = StyleSheet.create({
   logo: { width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   logoText: { color: '#FFF', fontWeight: '800', fontSize: 18 },
   title: { fontSize: 22, fontWeight: '800' },
-  label: { fontSize: 12, fontWeight: '600' },
   tabs: { flexDirection: 'row', padding: 4, borderRadius: 12, gap: 4 },
   tab: { flex: 1, paddingVertical: 10, borderRadius: 9, alignItems: 'center' },
   tabText: { fontWeight: '700', fontSize: 13 },

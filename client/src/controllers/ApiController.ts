@@ -18,11 +18,10 @@ import {
   setSearchResults,
   setUsers,
 } from '../store/slices/chatSlice';
-import { setServerConfig, setServerUrl } from '../store/slices/settingsSlice';
+import { setServerConfig } from '../store/slices/settingsSlice';
 import { ModStats, ReportItem, ServerConfig, UserProfile } from '../models/types';
 
 const TOKEN_KEY = 'pulselink_token';
-const SERVER_KEY = 'pulselink_server_url';
 
 async function request<T>(path: string, options: RequestInit = {}, useModToken = false): Promise<T> {
   const { auth, settings } = store.getState();
@@ -50,14 +49,7 @@ export const ApiController = {
     }
   },
 
-  async saveServerUrl(url: string) {
-    store.dispatch(setServerUrl(url));
-    await AsyncStorage.setItem(SERVER_KEY, url.trim().replace(/\/+$/, ''));
-  },
-
   async restoreSession(): Promise<boolean> {
-    const savedUrl = await AsyncStorage.getItem(SERVER_KEY);
-    if (savedUrl) store.dispatch(setServerUrl(savedUrl));
     await this.loadConfig();
 
     const token = await AsyncStorage.getItem(TOKEN_KEY);
@@ -91,7 +83,7 @@ export const ApiController = {
     }
   },
 
-  async register(payload: { displayName: string; email: string; username?: string; phone?: string; password: string }) {
+  async register(payload: { displayName: string; email?: string; username?: string; phone?: string; password: string }) {
     store.dispatch(setAuthLoading(true));
     try {
       const res = await request<{ token: string; user: UserProfile }>('/api/auth/register', {
@@ -105,6 +97,20 @@ export const ApiController = {
       store.dispatch(setAuthError(err.message));
       return false;
     }
+  },
+
+  async forgotPassword(identifier: string) {
+    return request<{ ok: boolean; message: string; devCode?: string }>('/api/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ identifier }),
+    });
+  },
+
+  async resetPassword(identifier: string, code: string, newPassword: string) {
+    return request<{ ok: boolean; message: string }>('/api/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ identifier, code, newPassword }),
+    });
   },
 
   async loginWithGoogle(idToken: string) {

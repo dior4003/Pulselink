@@ -1,14 +1,14 @@
--- PulseLink MySQL / MariaDB Schema (v3)
+-- PulseLink MySQL / MariaDB Schema (v1.1.3)
 CREATE DATABASE IF NOT EXISTS pulselink CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE pulselink;
 
 CREATE TABLE IF NOT EXISTS users (
   id CHAR(36) PRIMARY KEY,
-  email VARCHAR(191) NOT NULL UNIQUE,
+  email VARCHAR(191) NULL UNIQUE,
   google_id VARCHAR(191) NULL UNIQUE,
   username VARCHAR(64) NULL UNIQUE,
   invite_code VARCHAR(32) NULL UNIQUE,
-  phone VARCHAR(32) NULL,
+  phone VARCHAR(32) NULL UNIQUE,
   display_name VARCHAR(120) NOT NULL,
   bio VARCHAR(255) NOT NULL DEFAULT 'PulseLink orqali aloqadaman',
   avatar_color VARCHAR(16) NOT NULL DEFAULT '#6366F1',
@@ -16,8 +16,20 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash VARCHAR(255) NULL,
   role ENUM('user', 'moderator', 'admin') NOT NULL DEFAULT 'user',
   is_banned TINYINT(1) NOT NULL DEFAULT 0,
+  muted_until DATETIME NULL,
+  warnings_count INT NOT NULL DEFAULT 0,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   last_seen DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS password_resets (
+  id CHAR(36) PRIMARY KEY,
+  user_id CHAR(36) NOT NULL,
+  code VARCHAR(12) NOT NULL,
+  expires_at DATETIME NOT NULL,
+  used TINYINT(1) NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS friendships (
@@ -70,4 +82,14 @@ CREATE TABLE IF NOT EXISTS reports (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (reporter_id) REFERENCES users(id) ON DELETE CASCADE,
   FOREIGN KEY (target_user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS mod_logs (
+  id CHAR(36) PRIMARY KEY,
+  moderator_id CHAR(36) NOT NULL,
+  action VARCHAR(64) NOT NULL,
+  target_id VARCHAR(64) NULL,
+  details VARCHAR(255) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (moderator_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

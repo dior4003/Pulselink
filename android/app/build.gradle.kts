@@ -12,7 +12,7 @@ android {
         minSdk = 24
         targetSdk = 34
         versionCode = (System.getenv("APP_VERSION_CODE")?.toIntOrNull()) ?: 1
-        versionName = System.getenv("APP_VERSION_NAME") ?: "1.1.2"
+        versionName = System.getenv("APP_VERSION_NAME") ?: "1.1.3"
     }
 
     buildTypes {

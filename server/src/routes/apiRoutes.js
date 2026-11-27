@@ -37,10 +37,12 @@ router.get('/config', (_req, res) => {
   });
 });
 
-// Auth routes
+// Auth routes (Email, Phone, Google, Password Reset)
 router.post('/auth/register', authRateLimit, AuthController.register);
 router.post('/auth/login', authRateLimit, AuthController.login);
 router.post('/auth/google', authRateLimit, AuthController.googleLogin);
+router.post('/auth/forgot-password', authRateLimit, AuthController.forgotPassword);
+router.post('/auth/reset-password', authRateLimit, AuthController.resetPassword);
 
 // User & Public Profile / Invite Link routes
 router.get('/me', authMiddleware, UserController.getMe);

@@ -1,6 +1,6 @@
 {
   "name": "pulselink-server",
-  "version": "1.1.2",
+  "version": "1.1.3",
   "description": "PulseLink unified MVC backend: Email/Google Auth, MySQL/MariaDB, Media Upload, TURN Config, Chat & WebRTC Signaling",
   "main": "src/index.js",
   "scripts": {

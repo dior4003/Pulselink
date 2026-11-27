@@ -29,7 +29,6 @@ async function initDatabase() {
       );
       await conn.end();
     } catch (err) {
-      // Shared hosting (e.g., ahost.uz cPanel) pre-creates the database and restricts CREATE DATABASE
       console.warn('Database auto-create skipped:', err.message);
     }
   }
@@ -39,11 +38,11 @@ async function initDatabase() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       id CHAR(36) PRIMARY KEY,
-      email VARCHAR(191) NOT NULL UNIQUE,
+      email VARCHAR(191) NULL UNIQUE,
       google_id VARCHAR(191) NULL UNIQUE,
       username VARCHAR(64) NULL UNIQUE,
       invite_code VARCHAR(32) NULL UNIQUE,
-      phone VARCHAR(32) NULL,
+      phone VARCHAR(32) NULL UNIQUE,
       display_name VARCHAR(120) NOT NULL,
       bio VARCHAR(255) NOT NULL DEFAULT 'PulseLink orqali aloqadaman',
       avatar_color VARCHAR(16) NOT NULL DEFAULT '#6366F1',
@@ -58,11 +57,24 @@ async function initDatabase() {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
 
+  await pool.query(`ALTER TABLE users MODIFY COLUMN email VARCHAR(191) NULL`).catch(() => {});
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS invite_code VARCHAR(32) NULL UNIQUE`).catch(() => {});
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS role ENUM('user', 'moderator', 'admin') NOT NULL DEFAULT 'user'`).catch(() => {});
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_banned TINYINT(1) NOT NULL DEFAULT 0`).catch(() => {});
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS muted_until DATETIME NULL`).catch(() => {});
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS warnings_count INT NOT NULL DEFAULT 0`).catch(() => {});
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS password_resets (
+      id CHAR(36) PRIMARY KEY,
+      user_id CHAR(36) NOT NULL,
+      code VARCHAR(12) NOT NULL,
+      expires_at DATETIME NOT NULL,
+      used TINYINT(1) NOT NULL DEFAULT 0,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS friendships (

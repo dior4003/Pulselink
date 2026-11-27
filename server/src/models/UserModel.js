@@ -3,11 +3,17 @@ const { getPool } = require('../config/db');
 
 const AVATAR_PALETTE = ['#6366F1', '#06B6D4', '#8B5CF6', '#EC4899', '#F59E0B', '#3B82F6', '#F43F5E'];
 
+function normalizePhone(phone) {
+  if (!phone) return null;
+  const cleaned = String(phone).replace(/[\s()-]/g, '').trim();
+  return cleaned || null;
+}
+
 function mapUser(row) {
   if (!row) return null;
   return {
     id: row.id,
-    email: row.email,
+    email: row.email || '',
     username: row.username || '',
     inviteCode: row.invite_code || '',
     phone: row.phone || '',
@@ -25,7 +31,7 @@ function mapUser(row) {
 }
 
 const UserModel = {
-  async create({ email, googleId = null, username = null, phone = null, displayName, avatarUrl = null, passwordHash = null, role = 'user' }) {
+  async create({ email = null, googleId = null, username = null, phone = null, displayName, avatarUrl = null, passwordHash = null, role = 'user' }) {
     const id = crypto.randomUUID();
     const inviteCode = crypto.randomBytes(5).toString('hex');
     const color = AVATAR_PALETTE[Math.floor(Math.random() * AVATAR_PALETTE.length)];
@@ -34,11 +40,11 @@ const UserModel = {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
-        email.trim().toLowerCase(),
+        email ? email.trim().toLowerCase() : null,
         googleId,
         username ? username.trim().toLowerCase() : null,
         inviteCode,
-        phone || null,
+        normalizePhone(phone),
         displayName.trim(),
         color,
         avatarUrl,
@@ -50,10 +56,12 @@ const UserModel = {
   },
 
   async findByIdentifier(identifier) {
-    const norm = (identifier || '').trim().toLowerCase();
+    const raw = (identifier || '').trim();
+    const norm = raw.toLowerCase();
+    const phoneNorm = normalizePhone(raw) || norm;
     const [rows] = await getPool().query(
-      `SELECT * FROM users WHERE email = ? OR username = ? LIMIT 1`,
-      [norm, norm]
+      `SELECT * FROM users WHERE email = ? OR username = ? OR phone = ? LIMIT 1`,
+      [norm, norm, phoneNorm]
     );
     return rows[0] || null;
   },
@@ -116,7 +124,7 @@ const UserModel = {
     }
     if (typeof updates.phone === 'string') {
       fields.push('phone = ?');
-      values.push(updates.phone.trim() || null);
+      values.push(normalizePhone(updates.phone));
     }
     if (typeof updates.avatarColor === 'string' && /^#[0-9A-Fa-f]{6}$/.test(updates.avatarColor.trim())) {
       fields.push('avatar_color = ?');
@@ -129,6 +137,30 @@ const UserModel = {
     return this.findById(id);
   },
 
+  async updatePassword(userId, passwordHash) {
+    await getPool().query(`UPDATE users SET password_hash = ? WHERE id = ?`, [passwordHash, userId]);
+  },
+
+  async createResetCode(userId, code) {
+    const id = crypto.randomUUID();
+    const expiresAt = new Date(Date.now() + 10 * 60000);
+    await getPool().query(`DELETE FROM password_resets WHERE user_id = ?`, [userId]);
+    await getPool().query(
+      `INSERT INTO password_resets (id, user_id, code, expires_at) VALUES (?, ?, ?, ?)`,
+      [id, userId, code, expiresAt]
+    );
+  },
+
+  async verifyAndConsumeResetCode(userId, code) {
+    const [rows] = await getPool().query(
+      `SELECT * FROM password_resets WHERE user_id = ? AND code = ? AND used = 0 AND expires_at > NOW() LIMIT 1`,
+      [userId, String(code).trim()]
+    );
+    if (!rows.length) return false;
+    await getPool().query(`UPDATE password_resets SET used = 1 WHERE id = ?`, [rows[0].id]);
+    return true;
+  },
+
   async updateLastSeen(id) {
     await getPool().query(`UPDATE users SET last_seen = CURRENT_TIMESTAMP WHERE id = ?`, [id]);
   },
@@ -138,12 +170,12 @@ const UserModel = {
     const [rows] = await getPool().query(
       `SELECT * FROM users
        WHERE id <> ? AND is_banned = 0
-         AND (LOWER(display_name) LIKE ? OR LOWER(COALESCE(username, '')) LIKE ? OR LOWER(email) LIKE ?)
+         AND (LOWER(display_name) LIKE ? OR LOWER(COALESCE(username, '')) LIKE ? OR LOWER(COALESCE(email, '')) LIKE ? OR COALESCE(phone, '') LIKE ?)
        ORDER BY display_name ASC`,
-      [excludeId, q, q, q]
+      [excludeId, q, q, q, q]
     );
     return rows.map(mapUser);
   },
 };
 
-module.exports = { UserModel, mapUser };
+module.exports = { UserModel, mapUser, normalizePhone };

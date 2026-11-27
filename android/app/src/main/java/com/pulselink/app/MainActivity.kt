@@ -93,8 +93,8 @@ class MainActivity : ComponentActivity() {
                 devLogs = (listOf(line) + devLogs).take(30)
             }
 
-            lateinit var signaling: SignalingClient
-            lateinit var webRtc: WebRtcManager
+            val signalingRef = remember { arrayOfNulls<SignalingClient>(1) }
+            val webRtcRef = remember { arrayOfNulls<WebRtcManager>(1) }
 
             fun refreshLists() {
                 scope.launch {
@@ -108,7 +108,7 @@ class MainActivity : ComponentActivity() {
 
             fun endCallCleanup() {
                 stopRingtone()
-                webRtc.close()
+                webRtcRef[0]?.close()
                 incomingCaller = null
                 incomingCallId = null
                 activeCallPeer = null
@@ -116,13 +116,13 @@ class MainActivity : ComponentActivity() {
                 refreshLists()
             }
 
-            webRtc = remember {
+            val webRtc = remember {
                 WebRtcManager(
                     context = this,
                     onIceCandidate = { cand ->
                         val targetId = activeCallPeer?.id ?: return@WebRtcManager
                         val cId = activeCallId ?: return@WebRtcManager
-                        signaling.send(
+                        signalingRef[0]?.send(
                             "call:ice",
                             JSONObject()
                                 .put("targetId", targetId)
@@ -139,10 +139,10 @@ class MainActivity : ComponentActivity() {
                     onRemoteVideoTrack = { track ->
                         remoteRenderer?.let { track.addSink(it) }
                     }
-                )
+                ).also { webRtcRef[0] = it }
             }
 
-            signaling = remember {
+            val signaling = remember {
                 SignalingClient(
                     onConnectionChanged = {
                         wsConnected = it
@@ -177,7 +177,7 @@ class MainActivity : ComponentActivity() {
                                     activeCallId = data.optString("callId")
                                     webRtc.createPeerConnection(iceServers)
                                     webRtc.createOffer { sdp ->
-                                        signaling.send(
+                                        signalingRef[0]?.send(
                                             "call:offer",
                                             JSONObject()
                                                 .put("targetId", activeCallPeer?.id)
@@ -200,7 +200,7 @@ class MainActivity : ComponentActivity() {
                                     )
                                     webRtc.createPeerConnection(iceServers)
                                     webRtc.handleRemoteOffer(sdp) { answer ->
-                                        signaling.send(
+                                        signalingRef[0]?.send(
                                             "call:answer",
                                             JSONObject()
                                                 .put("targetId", fromId)
@@ -236,10 +236,9 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     }
-                )
+                ).also { signalingRef[0] = it }
             }
 
-            // Restore session and load server ICE/Google config on launch
             LaunchedEffect(Unit) {
                 runCatching {
                     val cfg = api.getConfig()
@@ -250,8 +249,7 @@ class MainActivity : ComponentActivity() {
                     runCatching { api.getMe() }
                         .onSuccess { user ->
                             currentUser = user
-                            signaling.connect(api.getWsUrl(), api.token)
-                            scope.launch { runCatching { iceServers = api.getIceServers() } }
+                            signaling.connect(api.getWsUrl())
                             refreshLists()
                         }
                         .onFailure {
@@ -269,7 +267,7 @@ class MainActivity : ComponentActivity() {
                         onServerUrlChange = {
                             serverUrl = it
                             session.serverUrl = it
-                            runCatching { api.updateBaseUrl(it) }.onFailure { authError = it.message }
+                            api.updateBaseUrl(it)
                         },
                         onLogin = { identifier, password ->
                             scope.launch {
@@ -280,8 +278,7 @@ class MainActivity : ComponentActivity() {
                                         api.token = res.token
                                         session.token = res.token
                                         currentUser = res.user
-                                        signaling.connect(api.getWsUrl(), api.token)
-                            scope.launch { runCatching { iceServers = api.getIceServers() } }
+                                        signaling.connect(api.getWsUrl())
                                         refreshLists()
                                     }
                                     .onFailure { authError = it.message }
@@ -297,8 +294,7 @@ class MainActivity : ComponentActivity() {
                                         api.token = res.token
                                         session.token = res.token
                                         currentUser = res.user
-                                        signaling.connect(api.getWsUrl(), api.token)
-                            scope.launch { runCatching { iceServers = api.getIceServers() } }
+                                        signaling.connect(api.getWsUrl())
                                         refreshLists()
                                     }
                                     .onFailure { authError = it.message }
@@ -330,8 +326,7 @@ class MainActivity : ComponentActivity() {
                                     api.token = res.token
                                     session.token = res.token
                                     currentUser = res.user
-                                    signaling.connect(api.getWsUrl(), api.token)
-                            scope.launch { runCatching { iceServers = api.getIceServers() } }
+                                    signaling.connect(api.getWsUrl())
                                     refreshLists()
                                 }.onFailure {
                                     authError = it.message

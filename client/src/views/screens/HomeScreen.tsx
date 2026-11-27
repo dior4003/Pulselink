@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   FlatList,
@@ -15,13 +15,13 @@ import { RootState } from '../../store/store';
 import { setDevMode, toggleDarkTheme } from '../../store/slices/settingsSlice';
 import { ApiController } from '../../controllers/ApiController';
 import { SocketController } from '../../controllers/SocketController';
-import { ModStats, ReportItem, UserProfile } from '../../models/types';
 import { AVATAR_SWATCHES, DARK_THEME, LIGHT_THEME } from '../theme/colors';
 import { UserAvatar } from '../components/UserAvatar';
+import { ModeratorModal } from '../components/ModeratorModal';
 
 export const HomeScreen: React.FC = () => {
   const dispatch = useDispatch();
-  const { user, modToken } = useSelector((s: RootState) => s.auth);
+  const user = useSelector((s: RootState) => s.auth.user);
   const { chats, users, calls, friends, incomingRequests, searchResults } = useSelector((s: RootState) => s.chat);
   const { darkTheme, devMode, wsConnected, pingMs, dbEngine, serverUrl, devLogs } = useSelector(
     (s: RootState) => s.settings
@@ -31,21 +31,14 @@ export const HomeScreen: React.FC = () => {
   const [tab, setTab] = useState<'chats' | 'friends' | 'calls' | 'profile'>('chats');
   const [query, setQuery] = useState('');
   const [friendInput, setFriendInput] = useState('');
+  const [modVisible, setModVisible] = useState(false);
+  const tapCountRef = useRef({ count: 0, lastTap: 0 });
 
-  // Profile form state
   const [displayName, setDisplayName] = useState(user?.displayName || '');
   const [username, setUsername] = useState(user?.username || '');
   const [bio, setBio] = useState(user?.bio || '');
   const [phone, setPhone] = useState(user?.phone || '');
   const [avatarColor, setAvatarColor] = useState(user?.avatarColor || '#6366F1');
-
-  // Moderator separate auth & dashboard state
-  const [modIdentifier, setModIdentifier] = useState('');
-  const [modPassword, setModPassword] = useState('');
-  const [modPasskey, setModPasskey] = useState('');
-  const [modStats, setModStats] = useState<ModStats | null>(null);
-  const [modUsers, setModUsers] = useState<UserProfile[]>([]);
-  const [modReports, setModReports] = useState<ReportItem[]>([]);
 
   useEffect(() => {
     if (user) {
@@ -66,6 +59,21 @@ export const HomeScreen: React.FC = () => {
   }, [query, tab]);
 
   if (!user) return null;
+
+  // Hidden 5-tap gesture on PulseLink logo/title for Moderator access
+  const handleSecretTap = () => {
+    const now = Date.now();
+    if (now - tapCountRef.current.lastTap > 2500) {
+      tapCountRef.current.count = 1;
+    } else {
+      tapCountRef.current.count += 1;
+    }
+    tapCountRef.current.lastTap = now;
+    if (tapCountRef.current.count >= 5) {
+      tapCountRef.current.count = 0;
+      setModVisible(true);
+    }
+  };
 
   const handleSaveProfile = async () => {
     try {
@@ -98,33 +106,17 @@ export const HomeScreen: React.FC = () => {
     }
   };
 
-  const handleModLogin = async () => {
-    try {
-      await ApiController.modLogin(modIdentifier, modPassword, modPasskey);
-      const data = await ApiController.modLoadDashboard();
-      setModStats(data.stats);
-      setModUsers(data.users);
-      setModReports(data.reports);
-    } catch (err: any) {
-      Alert.alert('Moderator kirishi', err.message);
-    }
-  };
-
-  const refreshModData = async () => {
-    const data = await ApiController.modLoadDashboard();
-    setModStats(data.stats);
-    setModUsers(data.users);
-    setModReports(data.reports);
-  };
-
   const profileLink = user.username ? `${serverUrl}/api/u/${user.username}` : 'Avval username o‘rnating';
   const inviteLink = user.inviteCode ? `${serverUrl}/api/invite/${user.inviteCode}` : '';
+  const isStaff = user.role === 'moderator' || user.role === 'admin';
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
       <View style={[styles.header, { backgroundColor: theme.surface, borderColor: theme.border }]}>
         <View style={styles.headerLeft}>
-          <Text style={[styles.headerTitle, { color: theme.text }]}>PulseLink</Text>
+          <TouchableOpacity activeOpacity={0.9} onPress={handleSecretTap}>
+            <Text style={[styles.headerTitle, { color: theme.text }]}>PulseLink</Text>
+          </TouchableOpacity>
           <View
             style={[
               styles.badge,
@@ -136,9 +128,16 @@ export const HomeScreen: React.FC = () => {
             </Text>
           </View>
         </View>
-        <TouchableOpacity onPress={() => dispatch(toggleDarkTheme())}>
-          <Text style={{ color: theme.primary, fontWeight: '700' }}>{darkTheme ? '☀️ Yorug‘' : '🌙 Tungi'}</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          {isStaff && (
+            <TouchableOpacity onPress={() => setModVisible(true)}>
+              <Text style={{ fontSize: 16 }}>🛡️</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity onPress={() => { dispatch(toggleDarkTheme()); }}>
+            <Text style={{ color: theme.primary, fontWeight: '700' }}>{darkTheme ? '☀️ Yorug‘' : '🌙 Tungi'}</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {(tab === 'chats' || tab === 'friends') && (
@@ -251,7 +250,7 @@ export const HomeScreen: React.FC = () => {
                   <UserAvatar name={f.peer.displayName} color={f.peer.avatarColor} online={f.peer.online} />
                   <View>
                     <Text style={[styles.rowTitle, { color: theme.text }]}>{f.peer.displayName}</Text>
-                    <Text style={{ color: theme.textMuted, fontSize: 12 }}>{f.peer.username ? `@${f.peer.username}` : ''}</Text>
+                    <Text style={{ color: theme.textMuted, fontSize: 12 }}>{f.peer.username ? `@${f.peer.username}` : f.peer.email}</Text>
                   </View>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -278,7 +277,7 @@ export const HomeScreen: React.FC = () => {
                     <UserAvatar name={u.displayName} color={u.avatarColor} online={u.online} />
                     <View>
                       <Text style={[styles.rowTitle, { color: theme.text }]}>{u.displayName}</Text>
-                      <Text style={{ color: theme.textMuted, fontSize: 12 }}>{u.username ? `@${u.username}` : ''}</Text>
+                      <Text style={{ color: theme.textMuted, fontSize: 12 }}>{u.username ? `@${u.username}` : u.email}</Text>
                     </View>
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -380,88 +379,11 @@ export const HomeScreen: React.FC = () => {
               <Text style={{ color: '#FFF', fontWeight: '700' }}>Profilni saqlash</Text>
             </TouchableOpacity>
 
-            {/* Separate Moderator Auth & Panel */}
-            <View style={[styles.devCard, { backgroundColor: theme.surface, borderColor: theme.border, gap: 8 }]}>
-              <Text style={{ color: theme.text, fontWeight: '800', fontSize: 14 }}>🛡️ Moderatorlik rejimi (Alohida Auth)</Text>
-              {!modToken ? (
-                <>
-                  <TextInput
-                    placeholder="Moderator email/username"
-                    placeholderTextColor={theme.textMuted}
-                    value={modIdentifier}
-                    onChangeText={setModIdentifier}
-                    autoCapitalize="none"
-                    style={[styles.input, { color: theme.text, backgroundColor: theme.bg, borderColor: theme.border }]}
-                  />
-                  <TextInput
-                    placeholder="Parol"
-                    placeholderTextColor={theme.textMuted}
-                    value={modPassword}
-                    onChangeText={setModPassword}
-                    secureTextEntry
-                    style={[styles.input, { color: theme.text, backgroundColor: theme.bg, borderColor: theme.border }]}
-                  />
-                  <TextInput
-                    placeholder="Moderator maxfiy kaliti (MOD_PASSKEY)"
-                    placeholderTextColor={theme.textMuted}
-                    value={modPasskey}
-                    onChangeText={setModPasskey}
-                    secureTextEntry
-                    style={[styles.input, { color: theme.text, backgroundColor: theme.bg, borderColor: theme.border }]}
-                  />
-                  <TouchableOpacity onPress={handleModLogin} style={[styles.saveBtn, { backgroundColor: '#8B5CF6' }]}>
-                    <Text style={{ color: '#FFF', fontWeight: '700' }}>Moderator sifatida kirish</Text>
-                  </TouchableOpacity>
-                </>
-              ) : (
-                <View style={{ gap: 8 }}>
-                  {modStats && (
-                    <Text style={{ color: theme.secondary, fontSize: 12, fontWeight: '700' }}>
-                      Foydalanuvchilar: {modStats.totalUsers} | Bloklangan: {modStats.bannedUsers} | Xabarlar: {modStats.totalMessages} | Ochiq shikoyatlar: {modStats.openReports}
-                    </Text>
-                  )}
-                  {modUsers.slice(0, 8).map((u) => (
-                    <View key={u.id} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Text style={{ color: theme.text, fontSize: 12.5 }}>{u.displayName} ({u.role})</Text>
-                      <TouchableOpacity
-                        onPress={async () => {
-                          await ApiController.modToggleBan(u.id, !u.isBanned);
-                          await refreshModData();
-                        }}
-                        style={[styles.smallBtn, { backgroundColor: u.isBanned ? theme.success : theme.danger }]}
-                      >
-                        <Text style={{ color: '#FFF', fontSize: 11, fontWeight: '700' }}>{u.isBanned ? 'Ochish' : 'Bloklash'}</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ))}
-                  {modReports.filter((r) => r.status === 'open').map((r) => (
-                    <View key={r.id} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Text style={{ color: theme.textMuted, fontSize: 12, flex: 1 }}>
-                        {r.targetName}: {r.reason}
-                      </Text>
-                      <TouchableOpacity
-                        onPress={async () => {
-                          await ApiController.modResolveReport(r.id);
-                          await refreshModData();
-                        }}
-                        style={[styles.smallBtn, { backgroundColor: theme.primary }]}
-                      >
-                        <Text style={{ color: '#FFF', fontSize: 11, fontWeight: '700' }}>Yopish</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ))}
-                  <TouchableOpacity onPress={() => ApiController.modLogout()} style={[styles.smallBtn, { backgroundColor: theme.elevated, alignSelf: 'flex-start' }]}>
-                    <Text style={{ color: theme.danger, fontSize: 12, fontWeight: '700' }}>Moderator chiqishi</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-            </View>
-
             {/* Developer Mode Card */}
             <View style={[styles.devCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
               <View style={styles.devTop}>
                 <Text style={{ color: theme.text, fontWeight: '700' }}>Dasturchi rejimi</Text>
-                <Switch value={devMode} onValueChange={(v) => dispatch(setDevMode(v))} />
+                <Switch value={devMode} onValueChange={(v) => { dispatch(setDevMode(v)); }} />
               </View>
               {devMode && (
                 <View style={{ gap: 6, marginTop: 8 }}>
@@ -505,6 +427,8 @@ export const HomeScreen: React.FC = () => {
           </TouchableOpacity>
         ))}
       </View>
+
+      <ModeratorModal visible={modVisible} onClose={() => setModVisible(false)} />
     </View>
   );
 };

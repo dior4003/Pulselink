@@ -1,9 +1,9 @@
 export interface UserProfile {
   id: string;
-  email?: string; // faqat o'z profilingizda mavjud
+  email: string;
   username: string;
   inviteCode?: string;
-  phone?: string; // faqat o'z profilingizda mavjud
+  phone: string;
   displayName: string;
   bio: string;
   avatarColor: string;

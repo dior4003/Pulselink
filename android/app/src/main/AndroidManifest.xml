@@ -9,16 +9,12 @@
 
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
-    <!-- allowBackup=false: token/sessiya adb backup orqali olinmasin.
-         usesCleartextTraffic: faqat debug build'da true (build.gradle.kts'dagi manifestPlaceholders). -->
     <application
-        android:allowBackup="false"
-        android:fullBackupContent="false"
-        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:allowBackup="true"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.PulseLink"
-        android:usesCleartextTraffic="${usesCleartext}">
+        android:usesCleartextTraffic="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"

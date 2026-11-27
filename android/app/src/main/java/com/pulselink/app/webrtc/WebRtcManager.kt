@@ -92,6 +92,7 @@ class WebRtcManager(
             override fun onRemoveStream(p0: MediaStream?) {}
             override fun onDataChannel(p0: DataChannel?) {}
             override fun onRenegotiationNeeded() {}
+            override fun onAddTrack(p0: RtpReceiver?, p1: Array<out MediaStream>?) {}
         })
 
         localAudioTrack?.let { peerConnection?.addTrack(it, listOf("ARDAMS")) }

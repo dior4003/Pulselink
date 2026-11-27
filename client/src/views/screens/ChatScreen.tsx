@@ -142,28 +142,20 @@ export const ChatScreen: React.FC = () => {
         contentContainerStyle={styles.msgList}
         renderItem={({ item }) => {
           const isOut = item.senderId === user.id;
-          // Token URL'ga qo'shilmaydi: rasm Authorization sarlavhasi bilan, fayl esa qisqa muddatli havola bilan ochiladi
-          const mediaPath = item.mediaUrl && /^\/uploads\/[0-9a-f-]{36}\.[a-z]+$/.test(item.mediaUrl) ? item.mediaUrl : null;
-          const imageSource = mediaPath
-            ? { uri: `${serverUrl}${mediaPath}`, headers: { Authorization: `Bearer ${token}` } }
+          const authedUrl = item.mediaUrl
+            ? `${serverUrl}${item.mediaUrl}?token=${encodeURIComponent(token)}`
             : null;
           return (
             <View style={[styles.msgRow, isOut ? styles.outRow : styles.inRow]}>
               <View style={[styles.bubble, { backgroundColor: isOut ? theme.msgOut : theme.msgIn }]}>
-                {item.type === 'image' && imageSource ? (
+                {item.type === 'image' && authedUrl ? (
                   <Image
-                    source={imageSource}
+                    source={{ uri: authedUrl }}
                     style={{ width: 200, height: 160, borderRadius: 10, marginBottom: 4 }}
                   />
                 ) : null}
-                {item.type === 'file' && mediaPath ? (
-                  <TouchableOpacity onPress={async () => {
-                    try {
-                      Linking.openURL(await ApiController.mediaLink(mediaPath));
-                    } catch {
-                      /* havola olinmadi */
-                    }
-                  }}>
+                {item.type === 'file' && authedUrl ? (
+                  <TouchableOpacity onPress={() => Linking.openURL(authedUrl)}>
                     <Text style={{ color: isOut ? '#FFF' : theme.primary, textDecorationLine: 'underline', fontWeight: '700' }}>
                       📄 {item.text || 'Faylni ochish'}
                     </Text>

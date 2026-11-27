@@ -1,5 +1,4 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { secureStorage } from './secureStorage';
 import { store } from '../store/store';
 import {
   clearModToken,
@@ -19,8 +18,8 @@ import {
   setSearchResults,
   setUsers,
 } from '../store/slices/chatSlice';
-import { setIceServers, setServerConfig, setServerUrl } from '../store/slices/settingsSlice';
-import { IceServerConfig, ModStats, ReportItem, ServerConfig, UserProfile } from '../models/types';
+import { setServerConfig, setServerUrl } from '../store/slices/settingsSlice';
+import { ModStats, ReportItem, ServerConfig, UserProfile } from '../models/types';
 
 const TOKEN_KEY = 'pulselink_token';
 const SERVER_KEY = 'pulselink_server_url';
@@ -51,61 +50,9 @@ export const ApiController = {
     }
   },
 
-  async saveServerUrl(url: string): Promise<boolean> {
-    const clean = url.trim().replace(/\/+$/, '');
-    if (!__DEV__ && !/^https:\/\//i.test(clean)) {
-      store.dispatch(setAuthError('Xavfsizlik uchun server manzili https:// bilan boshlanishi kerak'));
-      return false;
-    }
-    store.dispatch(setServerUrl(clean));
-    await AsyncStorage.setItem(SERVER_KEY, clean);
-    return true;
-  },
-
-  /** Tizimga kirgandan so'ng TURN'ni ham o'z ichiga olgan ICE serverlarni oladi. */
-  async loadIce() {
-    try {
-      const res = await request<{ iceServers: IceServerConfig[] }>('/api/ice');
-      if (res.iceServers && res.iceServers.length) store.dispatch(setIceServers(res.iceServers));
-    } catch {
-      /* ochiq STUN serverlar bilan davom etamiz */
-    }
-  },
-
-  async wsTicket(): Promise<string> {
-    const res = await request<{ ticket: string }>('/api/ws-ticket', { method: 'POST' });
-    return res.ticket;
-  },
-
-  /** Fayl uchun qisqa muddatli (2 daqiqa) imzolangan to'liq URL (Linking.openURL uchun). */
-  async mediaLink(mediaUrl: string): Promise<string> {
-    const name = mediaUrl.replace(/^\/uploads\//, '');
-    const res = await request<{ url: string }>(`/api/media/${encodeURIComponent(name)}/link`);
-    return `${store.getState().settings.serverUrl}${res.url}`;
-  },
-
-  async blockUser(peerId: string) {
-    await request('/api/friends/block', { method: 'POST', body: JSON.stringify({ peerId }) });
-    await this.refreshLists();
-  },
-
-  async unblockUser(peerId: string) {
-    await request(`/api/friends/block/${peerId}`, { method: 'DELETE' });
-  },
-
-  async changePassword(currentPassword: string, newPassword: string) {
-    const res = await request<{ token: string }>('/api/me/password', {
-      method: 'POST',
-      body: JSON.stringify({ currentPassword, newPassword }),
-    });
-    await secureStorage.setItem(TOKEN_KEY, res.token);
-    const user = store.getState().auth.user;
-    if (user) store.dispatch(setAuthenticated({ token: res.token, user }));
-  },
-
-  async logoutAll() {
-    await request('/api/me/logout-all', { method: 'POST' });
-    await this.logout();
+  async saveServerUrl(url: string) {
+    store.dispatch(setServerUrl(url));
+    await AsyncStorage.setItem(SERVER_KEY, url.trim().replace(/\/+$/, ''));
   },
 
   async restoreSession(): Promise<boolean> {
@@ -113,7 +60,7 @@ export const ApiController = {
     if (savedUrl) store.dispatch(setServerUrl(savedUrl));
     await this.loadConfig();
 
-    const token = await secureStorage.getItem(TOKEN_KEY);
+    const token = await AsyncStorage.getItem(TOKEN_KEY);
     if (!token) return false;
 
     try {
@@ -122,7 +69,7 @@ export const ApiController = {
       store.dispatch(setAuthenticated({ token, user }));
       return true;
     } catch {
-      await secureStorage.removeItem(TOKEN_KEY);
+      await AsyncStorage.removeItem(TOKEN_KEY);
       store.dispatch(logoutState());
       return false;
     }
@@ -135,7 +82,7 @@ export const ApiController = {
         method: 'POST',
         body: JSON.stringify({ identifier, password }),
       });
-      await secureStorage.setItem(TOKEN_KEY, res.token);
+      await AsyncStorage.setItem(TOKEN_KEY, res.token);
       store.dispatch(setAuthenticated(res));
       return true;
     } catch (err: any) {
@@ -151,7 +98,7 @@ export const ApiController = {
         method: 'POST',
         body: JSON.stringify(payload),
       });
-      await secureStorage.setItem(TOKEN_KEY, res.token);
+      await AsyncStorage.setItem(TOKEN_KEY, res.token);
       store.dispatch(setAuthenticated(res));
       return true;
     } catch (err: any) {
@@ -167,7 +114,7 @@ export const ApiController = {
         method: 'POST',
         body: JSON.stringify({ idToken }),
       });
-      await secureStorage.setItem(TOKEN_KEY, res.token);
+      await AsyncStorage.setItem(TOKEN_KEY, res.token);
       store.dispatch(setAuthenticated(res));
       return true;
     } catch (err: any) {
@@ -213,10 +160,7 @@ export const ApiController = {
   },
 
   async sendFriendRequest(payload: { targetUserId?: string; username?: string; inviteCode?: string }) {
-    await request('/api/friends/request', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
+    await request('/api/friends/request', { method: 'POST', body: JSON.stringify(payload) });
     await this.refreshLists();
   },
 
@@ -244,7 +188,7 @@ export const ApiController = {
     });
   },
 
-  // Separate Moderator Auth & Moderation API
+  // Expanded Separate Moderator Auth & Moderation API
   async modLogin(identifier: string, password: string, modPasskey: string) {
     const res = await request<{ modToken: string }>('/api/mod/login', {
       method: 'POST',
@@ -255,23 +199,51 @@ export const ApiController = {
   },
 
   async modLoadDashboard() {
-    const [statsRes, usersRes, reportsRes] = await Promise.all([
-      request<{ stats: ModStats }>('/api/mod/stats', {}, true),
+    const [statsRes, usersRes, reportsRes, msgsRes, callsRes, logsRes] = await Promise.all([
+      request<{ stats: ModStats & { mutedUsers?: number }; activeCallsCount: number }>('/api/mod/stats', {}, true),
       request<{ users: UserProfile[] }>('/api/mod/users', {}, true),
       request<{ reports: ReportItem[] }>('/api/mod/reports', {}, true),
+      request<{ messages: any[] }>('/api/mod/messages', {}, true),
+      request<{ calls: any[] }>('/api/mod/calls', {}, true),
+      request<{ logs: any[] }>('/api/mod/logs', {}, true),
     ]);
     return {
       stats: statsRes.stats,
+      activeCallsCount: statsRes.activeCallsCount,
       users: usersRes.users,
       reports: reportsRes.reports,
+      messages: msgsRes.messages,
+      calls: callsRes.calls,
+      logs: logsRes.logs,
     };
   },
 
   async modToggleBan(userId: string, isBanned: boolean) {
-    await request(`/api/mod/users/${userId}/ban`, {
-      method: 'POST',
-      body: JSON.stringify({ isBanned }),
-    }, true);
+    await request(`/api/mod/users/${userId}/ban`, { method: 'POST', body: JSON.stringify({ isBanned }) }, true);
+  },
+
+  async modMuteUser(userId: string, minutes: number) {
+    await request(`/api/mod/users/${userId}/mute`, { method: 'POST', body: JSON.stringify({ minutes }) }, true);
+  },
+
+  async modWarnUser(userId: string, reason: string) {
+    await request(`/api/mod/users/${userId}/warn`, { method: 'POST', body: JSON.stringify({ reason }) }, true);
+  },
+
+  async modSetRole(userId: string, role: 'user' | 'moderator') {
+    await request(`/api/mod/users/${userId}/role`, { method: 'POST', body: JSON.stringify({ role }) }, true);
+  },
+
+  async modDeleteMessage(messageId: string) {
+    await request(`/api/mod/messages/${messageId}`, { method: 'DELETE' }, true);
+  },
+
+  async modTerminateCall(callId: string) {
+    await request(`/api/mod/calls/${callId}/terminate`, { method: 'POST' }, true);
+  },
+
+  async modBroadcast(text: string) {
+    await request('/api/mod/broadcast', { method: 'POST', body: JSON.stringify({ text }) }, true);
   },
 
   async modResolveReport(reportId: string) {
@@ -283,7 +255,7 @@ export const ApiController = {
   },
 
   async logout() {
-    await secureStorage.removeItem(TOKEN_KEY);
+    await AsyncStorage.removeItem(TOKEN_KEY);
     store.dispatch(setActivePeer(null));
     store.dispatch(logoutState());
   },

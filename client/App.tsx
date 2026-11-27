@@ -9,6 +9,7 @@ import { AuthScreen } from './src/views/screens/AuthScreen';
 import { HomeScreen } from './src/views/screens/HomeScreen';
 import { ChatScreen } from './src/views/screens/ChatScreen';
 import { CallScreen } from './src/views/screens/CallScreen';
+import { ToastBanner } from './src/views/components/ToastBanner';
 
 const AppRouter: React.FC = () => {
   const user = useSelector((s: RootState) => s.auth.user);
@@ -40,6 +41,7 @@ const AppRouter: React.FC = () => {
       <StatusBar style={darkTheme ? 'light' : 'dark'} />
       {!user ? <AuthScreen /> : activePeer ? <ChatScreen /> : <HomeScreen />}
       <CallScreen />
+      <ToastBanner />
     </View>
   );
 };

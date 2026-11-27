@@ -1,10 +1,11 @@
 {
   "name": "pulselink-client",
-  "version": "1.1.0",
+  "version": "1.1.2",
   "main": "index.js",
   "scripts": {
     "start": "expo start",
     "web": "expo start --web",
+    "build:web": "expo export --platform web",
     "ios": "expo start --ios",
     "android": "expo start --android",
     "typecheck": "tsc --noEmit"
@@ -15,7 +16,7 @@
     "@reduxjs/toolkit": "^2.2.7",
     "expo": "~51.0.28",
     "expo-image-picker": "~15.0.7",
-    "expo-secure-store": "~13.0.2",
+    "expo-notifications": "~0.28.18",
     "expo-status-bar": "~1.12.1",
     "react": "18.2.0",
     "react-dom": "18.2.0",

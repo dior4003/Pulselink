@@ -1,21 +1,22 @@
-'use strict';
-
-const { resolveUser, extractBearer } = require('./authMiddleware');
+const { verifyToken } = require('../auth');
+const { UserModel } = require('../models/UserModel');
 
 async function moderatorMiddleware(req, res, next) {
   try {
-    const result = await resolveUser(extractBearer(req), 'moderator');
-    if (result.error) {
-      return res.status(result.status === 401 ? 403 : result.status).json({ error: 'Moderator autentifikatsiyasi talab qilinadi' });
+    const header = req.headers.authorization || '';
+    const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+    const payload = verifyToken(token);
+    if (!payload || !payload.userId || payload.scope !== 'moderator') {
+      return res.status(403).json({ error: 'Moderator autentifikatsiyasi talab qilinadi' });
     }
-    const { user } = result;
-    if (user.role !== 'moderator' && user.role !== 'admin') {
+    const user = await UserModel.findById(payload.userId);
+    if (!user || user.isBanned || (user.role !== 'moderator' && user.role !== 'admin')) {
       return res.status(403).json({ error: 'Moderator huquqi yo‘q' });
     }
     req.moderator = user;
     next();
-  } catch (err) {
-    next(err);
+  } catch {
+    res.status(500).json({ error: 'Server xatosi' });
   }
 }
 

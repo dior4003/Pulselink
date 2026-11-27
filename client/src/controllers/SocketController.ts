@@ -17,66 +17,40 @@ import {
 import { addDevLog, setPingMs, setWsConnected } from '../store/slices/settingsSlice';
 import { ApiController } from './ApiController';
 import { WebRtcController } from './WebRtcController';
+import { NotificationController } from './NotificationController';
 import { UserProfile } from '../models/types';
 
 class SocketManager {
   private ws: WebSocket | null = null;
   private reconnectTimer: any = null;
 
-  private retry = 0;
-  private generation = 0; // eski socket'ning onclose'i yangisini buzmasligi uchun
-
-  private scheduleReconnect() {
-    clearTimeout(this.reconnectTimer);
-    // Eksponensial backoff (1s, 2s, 4s ... maks 30s) + jitter
-    const delay = Math.min(30000, 1000 * 2 ** this.retry) + Math.floor(Math.random() * 500);
-    this.retry += 1;
-    this.reconnectTimer = setTimeout(() => {
-      if (store.getState().auth.token) this.connect();
-    }, delay);
-  }
-
-  async connect() {
+  connect() {
     this.disconnect();
-    const gen = ++this.generation;
     const { auth, settings } = store.getState();
     if (!auth.token) return;
 
-    // Token URL'ga qo'yilmaydi: bir martalik (30 soniyalik) bilet olinadi
-    let ticket: string;
-    try {
-      ticket = await ApiController.wsTicket();
-    } catch {
-      if (gen === this.generation) this.scheduleReconnect();
-      return;
-    }
-    if (gen !== this.generation) return;
-    ApiController.loadIce().catch(() => {}); // TURN bilan yangilangan ICE serverlar
+    NotificationController.requestPermissions().catch(() => {});
 
     const wsBase = settings.serverUrl
       .replace(/^https:\/\//, 'wss://')
       .replace(/^http:\/\//, 'ws://');
 
-    const ws = new WebSocket(`${wsBase}?ticket=${encodeURIComponent(ticket)}`);
+    const ws = new WebSocket(`${wsBase}?token=${encodeURIComponent(auth.token)}`);
     this.ws = ws;
 
     ws.onopen = () => {
-      this.retry = 0;
       store.dispatch(setWsConnected(true));
       store.dispatch(addDevLog('WS connected'));
       this.send('ping', { ts: Date.now() });
     };
 
-    ws.onclose = (ev: any) => {
-      if (gen !== this.generation) return;
+    ws.onclose = () => {
       store.dispatch(setWsConnected(false));
       store.dispatch(addDevLog('WS disconnected'));
-      // 4002: sessiya bekor qilingan, 4003: bloklangan -> qayta ulanmasdan chiqamiz
-      if (ev && (ev.code === 4002 || ev.code === 4003)) {
-        ApiController.logout().catch(() => {});
-        return;
-      }
-      this.scheduleReconnect();
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = setTimeout(() => {
+        if (store.getState().auth.token) this.connect();
+      }, 3000);
     };
 
     ws.onmessage = async (ev) => {
@@ -98,12 +72,29 @@ class SocketManager {
           break;
         case 'friend:update':
           ApiController.refreshLists().catch(() => {});
+          NotificationController.notify('Yangi do‘stlik so‘rovi', 'Sizga yangi do‘stlik so‘rovi keldi');
+          break;
+        case 'mod:notice':
+          NotificationController.notify('Moderator xabari', data.message || '');
+          break;
+        case 'system:announcement':
+          NotificationController.notify(`📢 E’lon (${data.fromName || 'Admin'})`, data.text || '');
           break;
         case 'chat:message': {
           store.dispatch(appendMessage(data));
-          const activePeer = store.getState().chat.activePeer;
-          if (activePeer && data.senderId === activePeer.id) {
-            this.send('chat:read', { peerId: activePeer.id });
+          const { auth: authState, chat } = store.getState();
+          const isFromMe = data.senderId === authState.user?.id;
+          const isOpenChat = chat.activePeer?.id === data.senderId;
+
+          if (!isFromMe && isOpenChat) {
+            this.send('chat:read', { peerId: data.senderId });
+          } else if (!isFromMe) {
+            const sender = chat.users.find((u) => u.id === data.senderId);
+            NotificationController.notify(
+              sender?.displayName || 'Yangi xabar',
+              data.text || 'Media fayl',
+              data.senderId
+            );
           }
           ApiController.refreshLists().catch(() => {});
           break;
@@ -119,6 +110,10 @@ class SocketManager {
           break;
         case 'call:incoming':
           store.dispatch(setIncomingCall(data));
+          NotificationController.notify(
+            data.callType === 'video' ? '📹 Video qo‘ng‘iroq' : '📞 Audio qo‘ng‘iroq',
+            `${data.caller?.displayName || 'Foydalanuvchi'} qo‘ng‘iroq qilmoqda`
+          );
           break;
         case 'call:hold':
           store.dispatch(setPeerOnHold(Boolean(data.onHold)));
@@ -160,6 +155,7 @@ class SocketManager {
           ApiController.refreshLists().catch(() => {});
           break;
         case 'call:hangup':
+          if (data.reason) Alert.alert('Qo‘ng‘iroq', data.reason);
           WebRtcController.close();
           store.dispatch(resetCallState());
           ApiController.refreshLists().catch(() => {});
@@ -232,7 +228,6 @@ class SocketManager {
 
   disconnect() {
     clearTimeout(this.reconnectTimer);
-    this.generation += 1;
     if (this.ws) {
       this.ws.close();
       this.ws = null;

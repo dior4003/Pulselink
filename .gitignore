@@ -4,11 +4,7 @@ npm-debug.log*
 
 # Environment & Secrets
 .env
-.env.*
-!.env.example
-
-# Foydalanuvchi yuklagan fayllar
-server/uploads/
+.env.local
 
 # Android / Gradle
 android/.gradle/
@@ -19,20 +15,6 @@ android/.idea/
 *.iml
 *.apk
 *.aab
-
-# Imzolash kalitlari va maxfiy fayllar – HECH QACHON commit qilmang
-*.jks
-*.keystore
-*.p12
-*.pem
-keystore.properties
-android/keystore.b64
-signing/
-
-# Expo / RN
-client/.expo/
-client/dist/
-client/web-build/
 
 # OS & Editor
 .DS_Store

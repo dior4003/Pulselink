@@ -4,12 +4,20 @@ import { IceServerConfig } from '../../models/types';
 
 function defaultServerUrl(): string {
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
-    return window.location.origin.includes(':3000')
-      ? window.location.origin
-      : 'http://localhost:3000';
+    const origin = window.location.origin;
+    if (!origin.includes(':8081') && !origin.includes(':19006')) {
+      return origin;
+    }
+    return 'http://localhost:3000';
   }
   if (Platform.OS === 'android') return 'http://10.0.2.2:3000';
-  return 'http://localhost:3000'; // iOS simulator
+  return 'http://localhost:3000';
+}
+
+export interface ToastNotice {
+  title: string;
+  body: string;
+  peerId?: string;
 }
 
 interface SettingsState {
@@ -22,6 +30,7 @@ interface SettingsState {
   googleClientId: string;
   iceServers: IceServerConfig[];
   devLogs: string[];
+  toast: ToastNotice | null;
 }
 
 const initialState: SettingsState = {
@@ -37,6 +46,7 @@ const initialState: SettingsState = {
     { urls: 'stun:stun1.l.google.com:19302' },
   ],
   devLogs: [],
+  toast: null,
 };
 
 const settingsSlice = createSlice({
@@ -68,15 +78,18 @@ const settingsSlice = createSlice({
         state.iceServers = action.payload.iceServers;
       }
     },
-    setIceServers(state, action: PayloadAction<IceServerConfig[]>) {
-      if (action.payload.length) state.iceServers = action.payload;
-    },
     addDevLog(state, action: PayloadAction<string>) {
       const ts = new Date().toLocaleTimeString();
       state.devLogs = [`[${ts}] ${action.payload}`, ...state.devLogs].slice(0, 35);
     },
     clearDevLogs(state) {
       state.devLogs = [];
+    },
+    showToast(state, action: PayloadAction<ToastNotice>) {
+      state.toast = action.payload;
+    },
+    clearToast(state) {
+      state.toast = null;
     },
   },
 });
@@ -88,9 +101,10 @@ export const {
   setWsConnected,
   setPingMs,
   setServerConfig,
-  setIceServers,
   addDevLog,
   clearDevLogs,
+  showToast,
+  clearToast,
 } = settingsSlice.actions;
 
 export default settingsSlice.reducer;

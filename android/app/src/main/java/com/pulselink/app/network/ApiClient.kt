@@ -1,6 +1,5 @@
 package com.pulselink.app.network
 
-import com.pulselink.app.BuildConfig
 import com.pulselink.app.data.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -9,25 +8,14 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
-import java.net.URLEncoder
-import java.util.concurrent.TimeUnit
 
 class ApiClient(private var baseUrl: String) {
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .writeTimeout(30, TimeUnit.SECONDS)
-        .build()
+    private val client = OkHttpClient()
     private val jsonType = "application/json; charset=utf-8".toMediaType()
     var token: String = ""
 
-    /** Release build'da faqat HTTPS qabul qilinadi (debug'da lokal HTTP ruxsat). */
     fun updateBaseUrl(url: String) {
-        val clean = url.trim().trimEnd('/')
-        if (!BuildConfig.DEBUG && !clean.startsWith("https://")) {
-            throw IllegalArgumentException("Xavfsizlik uchun server manzili https:// bilan boshlanishi kerak")
-        }
-        baseUrl = clean
+        baseUrl = url.trim().trimEnd('/')
     }
 
     fun getBaseUrl(): String = baseUrl
@@ -36,7 +24,7 @@ class ApiClient(private var baseUrl: String) {
         val wsBase = baseUrl
             .replace("https://", "wss://")
             .replace("http://", "ws://")
-        return wsBase // token Authorization sarlavhasi bilan yuboriladi
+        return "$wsBase?token=$token"
     }
 
     suspend fun getConfig(): ServerConfig = withContext(Dispatchers.IO) {
@@ -59,19 +47,6 @@ class ApiClient(private var baseUrl: String) {
             database = obj.optString("database", "MySQL/MariaDB"),
             iceServers = iceList
         )
-    }
-
-    /** TURN ma'lumotlarini o'z ichiga olgan ICE serverlar (faqat tizimga kirgan foydalanuvchiga). */
-    suspend fun getIceServers(): List<IceServerConfig> = withContext(Dispatchers.IO) {
-        val arr = get("/api/ice").optJSONArray("iceServers") ?: return@withContext emptyList()
-        List(arr.length()) { i ->
-            val item = arr.getJSONObject(i)
-            IceServerConfig(
-                urls = item.getString("urls"),
-                username = item.optString("username").takeIf { it.isNotEmpty() },
-                credential = item.optString("credential").takeIf { it.isNotEmpty() }
-            )
-        }
     }
 
     suspend fun login(identifier: String, password: String): AuthResult = withContext(Dispatchers.IO) {
@@ -141,7 +116,7 @@ class ApiClient(private var baseUrl: String) {
     }
 
     suspend fun getUsers(query: String = ""): List<UserProfile> = withContext(Dispatchers.IO) {
-        val arr = get("/api/users?q=${URLEncoder.encode(query, "UTF-8")}").getJSONArray("users")
+        val arr = get("/api/users?q=$query").getJSONArray("users")
         List(arr.length()) { i -> parseUser(arr.getJSONObject(i)) }
     }
 

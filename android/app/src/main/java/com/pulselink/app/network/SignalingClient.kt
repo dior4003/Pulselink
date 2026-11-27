@@ -6,25 +6,17 @@ import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import org.json.JSONObject
-import java.util.concurrent.TimeUnit
 
 class SignalingClient(
     private val onEvent: (event: String, data: JSONObject) -> Unit,
     private val onConnectionChanged: (connected: Boolean) -> Unit
 ) {
-    private val client = OkHttpClient.Builder()
-        .pingInterval(25, TimeUnit.SECONDS)
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .build()
+    private val client = OkHttpClient()
     private var webSocket: WebSocket? = null
 
-    /** Token URL'ga emas, Authorization sarlavhasiga qo'yiladi (loglarda/proxy'da ko'rinmaydi). */
-    fun connect(wsUrl: String, token: String) {
+    fun connect(wsUrl: String) {
         disconnect()
-        val request = Request.Builder()
-            .url(wsUrl)
-            .header("Authorization", "Bearer $token")
-            .build()
+        val request = Request.Builder().url(wsUrl).build()
         webSocket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 onConnectionChanged(true)

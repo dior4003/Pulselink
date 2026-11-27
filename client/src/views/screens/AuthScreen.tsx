@@ -55,7 +55,7 @@ export const AuthScreen: React.FC = () => {
   }, [googleClientId]);
 
   const handleSubmit = async () => {
-    if (!(await ApiController.saveServerUrl(urlInput))) return;
+    await ApiController.saveServerUrl(urlInput);
     const ok = isRegister
       ? await ApiController.register({ displayName, email, username, phone, password })
       : await ApiController.login(identifier, password);
